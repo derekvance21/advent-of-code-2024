@@ -12,8 +12,8 @@
 (defn parse-instruction
   [[s a b]]
   (case s
-    "do()" ::do
-    "don't()" ::don't
+    "do()" ::on
+    "don't()" ::off
     [(edn/read-string a)
      (edn/read-string b)]))
 
@@ -37,7 +37,7 @@
   (transduce
    (comp
     (map parse-instruction)
-    (switch #{::do} #{::don't}) ;; remove this for part 1
+    (switch #{::on} #{::off}) ;; remove this for part 1
     (map #(apply * %)))
    +
    0
@@ -47,12 +47,3 @@
   [input]
   (print (solve (slurp input))))
 
-(comment
-  (into
-   []
-   (comp (drop 100) (take 10))
-   #_(map
-      parse-mul)
-   (re-seq mul-re (slurp "inputs/day3.txt")))
-
-  (into [] (comp (map parse-mul) #_(map #(apply + %)))  (re-seq mul-re (subs (slurp "inputs/day3.txt") 0 200))))
