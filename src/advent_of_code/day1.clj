@@ -1,8 +1,21 @@
 (ns advent-of-code.day1
   (:require
+   [clojure.edn :as edn]
+   [clojure.string :as str]
    [clojure.test :as t]
-   [clojure.java.io :as io]
-   [advent-of-code.utils :as utils]))
+   [clojure.java.io :as io]))
+
+(defn parse-line
+  [line]
+  (mapv edn/read-string (str/split line #"\s+" 2)))
+
+(defn transpose
+  [m]
+  (apply mapv vector m))
+
+(defn columnize
+  [lines]
+  (transpose (map parse-line lines)))
 
 (defn diff-sum
   [l r]
@@ -19,7 +32,7 @@
 
 (defn solve
   [lines]
-  (let [[l r] (utils/columnize lines)]
+  (let [[l r] (columnize lines)]
     {:part1 (diff-sum (sort l) (sort r))
      :part2 (similarity l r)}))
 
@@ -41,4 +54,3 @@
     (t/testing "Part 2" (t/is (= 31 part2)))))
 
 (t/run-test day1)
-
