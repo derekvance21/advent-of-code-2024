@@ -1,15 +1,53 @@
 (ns advent-of-code.day4
   (:require
    [clojure.java.io :as io]
+   [clojure.set :as set]
    [clojure.string :as str]))
 
-(defn transpose
-  [m]
-  (apply mapv vector m))
+(def example
+  ["MMMSXXMASM"
+   "MSAMXMSMSA"
+   "AMXSXMAAMM"
+   "MSAMASMSMX"
+   "XMASAMXAMM"
+   "XXAMMXXAMA"
+   "SMSMSASXSS"
+   "SAXAMASAAA"
+   "MAMMMXMMMM"
+   "MXMXAXMASX"])
 
-(defn mv->v
-  [mv]
-  (into [] (map val) (sort-by key mv)))
+;; stateful transducer - keep track of the previous (dec (count search)) items
+;; on every input, check if previous is the search sequence you're looking for
+;; if so, add it to result, otherwise, result
+(defn search-by
+  [f search]
+  (fn [rf]
+    (let [left (volatile! search)
+          matched (volatile! [])]
+      (fn
+        ([] (rf))
+        ([result]
+         (let [ret (if (seq @left)
+                     result
+                     (unreduced (rf result @matched)))]
+           (rf ret)))
+        ([result input]
+         (let [ret (if (seq @left)
+                     result
+                     (let [match @matched]
+                       (vreset! matched [])
+                       (vreset! left search)
+                       (rf result match)))]
+           (condp = (f input)
+             (first @left) (do
+                             (vswap! matched conj input)
+                             (vswap! left rest))
+             (first search) (do
+                              (vreset! matched [input])
+                              (vreset! left (rest search)))
+             (do (vreset! left search)
+                 (vreset! matched [])))
+           ret))))))
 
 (defn merge-diags
   ([] {})
@@ -20,54 +58,77 @@
 (into (sorted-map) [])
 
 ;; Shift+j joins current line to next line!
-((partial merge-with merge))
+
 (defn transpose+
   [m f]
-  (let [rf (partial merge-with merge #_into #_%&)
-        row-xf (map-indexed
-                (fn [i row]
-                  (transduce
-                   (map-indexed
-                    (fn [j x]
-                      {(f i j) {i x} #_[x]}))
-                   rf (sorted-map) row)))]
-    (transduce row-xf rf (sorted-map) m)))
+  (let [rf (completing
+            (fn [t [i [j x]]]
+              (update t i (fnil assoc (sorted-map)) j x)))
+        xf (comp
+            (map-indexed
+             (fn [i row]
+               (eduction
+                (map-indexed (fn [j x]
+                               [i [j x]]))
+                row)))
+            cat
+            (map (fn [[i [j x]]]
+                   [(f i j) [i x]])))]
+    (transduce
+     xf rf
+     (sorted-map)
+     m)))
 
-;; stateful transducer - keep track of the previous (dec (count search)) items
-;; on every input, check if previous is the search sequence you're looking for
-;; if so, add it to result, otherwise, result
-(defn index-of
-  [m subseq]
-  ()
-  )
+;; maybe searches?
+;; list of things to search.
+;; then remove `left`
+;; and if any things in searches are empty, then output x?
+;; so when a line is done, empty that search
+;; makes it kind of like ndfsm
+#_(defn re
+    [s left]
+    (fn [x]
+      (if (seq left)
+        (condp = x
+          (first left) (re s (rest left))
+          (first s) (re s (rest s))
+          (re s left))
+        s)))
 
-(transpose+
- [[1  2  3  4]
+(defn search-diags
+  [m s]
+  (into []
+        (comp
+         (map (fn [[i r]]
+                (into
+                 []
+                 (comp
+                  (search-by val s)
+                  (map first)
+                  (map (fn [[j x]]
+                         [i j x])))
+                 r)))
+         cat)
+        m))
 
-  [5  6  7  8]
+(defn part2
+  [lines]
+  (let [f (transpose+ lines +)
+        b (transpose+ lines -)
+        normalize-f (fn [[xf yf]]
+                      [(inc yf) (dec (- xf yf))])
+        normalize-b (fn [[xb yb]]
+                      [(inc yb) (inc (- yb xb))])
+        f-matches (into #{}
+                        (map normalize-f)
+                        (into (search-diags f "SAM") (search-diags f "MAS")))
 
-  [9  10 11 12]]
- -
- #_(fn [x y]
-     (+ (- x y) 3))
- #_-
- #_(fn [_ y] y))
+        b-matches (into #{}
+                        (map normalize-b)
+                        (into (search-diags b "SAM") (search-diags b "MAS")))]
+    (count (set/intersection f-matches b-matches))))
 
-(defn diag-equals
-  [[xf yf] [xb yb]]
-  (and (= yf yb)
-       (= (- xf yf)
-          (- yb xb))))
-
-(diag-equals
- [5 2]
- [-1 2])
-(diag-equals
- [3 2]
- [1 2])
-
-(diag-equals
- 3 [5 0] [-1 2])
+(part2 example)
 
 (defn row-diag
   [i row]
@@ -90,18 +151,6 @@
    [[1 2]
     [3 4]]))
 
-(def example
-  ["MMMSXXMASM"
-   "MSAMXMSMSA"
-   "AMXSXMAAMM"
-   "MSAMASMSMX"
-   "XMASAMXAMM"
-   "XXAMMXXAMA"
-   "SMSMSASXSS"
-   "SAXAMASAAA"
-   "MAMMMXMMMM"
-   "MXMXAXMASX"])
-
 (defn xmas-matches
   [s]
   (count (re-seq #"XMAS" s)))
@@ -122,17 +171,10 @@
   [lines]
 
   (let [diags (matrix-diags lines)]
-    {:part1 (part1 diags)}))
+    {:part1 (part1 diags)
+     :part2 (part2 lines)}))
 
 (solve example)
-
-(update-vals
- (matrix-diags
-  example
-  #_["M.S"
-     ".A."
-     "M.S"])
- (comp #(mapv str/join %) mv->v))
 
 (defn -main
   [input & _]
